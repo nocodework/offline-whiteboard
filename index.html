@@ -12,7 +12,7 @@
 <meta property="og:description" content="One HTML file. Works fully offline, even air-gapped. No account, no server, no tracking. Free &amp; open source.">
 <meta property="og:image" content="screenshot.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧩</text></svg>">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJvZmZsaW5lLXdoaXRlYm9hcmQiPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJiZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMCIgeTI9IjY0IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzhCNUNGNiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM2RDI4RDkiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjE1IiBmaWxsPSJ1cmwoI2JnKSIvPgogIDxwYXRoIGQ9Ik0zMiAyNCAxNiA0ME0zMiAyNCA0OCA0MCIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxyZWN0IHg9IjIxIiB5PSI4IiAgd2lkdGg9IjIyIiBoZWlnaHQ9IjE2IiByeD0iNCIgZmlsbD0iI0ZERTA0NyIvPgogIDxyZWN0IHg9IjUiICB5PSI0MCIgd2lkdGg9IjIyIiBoZWlnaHQ9IjE2IiByeD0iNCIgZmlsbD0iI2ZmZmZmZiIvPgogIDxyZWN0IHg9IjM3IiB5PSI0MCIgd2lkdGg9IjIyIiBoZWlnaHQ9IjE2IiByeD0iNCIgZmlsbD0iI2ZmZmZmZiIvPgo8L3N2Zz4K">
 <!-- Zero external requests by design: no web fonts, no CDN, no analytics. System font stack only. -->
 <style>
   /* ===== Design tokens — shadcn/ui Violet theme ===== */
@@ -113,7 +113,10 @@
   .brand {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 14px 8px 10px;
+    text-decoration: none; color: inherit;
   }
+  .brand:hover .name { color: var(--primary); }
+  .brand:hover .logo { box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow-xs); }
   .brand .logo {
     width: 30px; height: 30px; flex: none;
     display: grid; place-items: center;
@@ -241,15 +244,15 @@
 
   <!-- Top bar -->
   <div class="topbar">
-    <div class="brand panel">
+    <a class="brand panel" href="https://nocodework.io" target="_blank" rel="noopener" title="Built by NoCodeWork — automation &amp; AI apps">
       <div class="logo" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8.5 6.5 14.5M12 8.5 17.5 14.5" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><rect x="8" y="2.5" width="8" height="6" rx="1.6" fill="#FDE047"/><rect x="2.5" y="14.5" width="8" height="6" rx="1.6" fill="#fff"/><rect x="13.5" y="14.5" width="8" height="6" rx="1.6" fill="#fff"/></svg>
       </div>
       <div>
         <div class="name">Whiteboard</div>
-        <div class="sub">private · offline · NoCodeWork</div>
+        <div class="sub">private · offline · by NoCodeWork ↗</div>
       </div>
-    </div>
+    </a>
     <div class="actions panel">
       <span class="saved-dot" id="savedDot" title="Save status"><b></b><span id="savedText" aria-live="polite">Saved</span></span>
       <span class="sep"></span>
