@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>offline-whiteboard — a private, offline whiteboard in a single HTML file</title>
+<meta name="description" content="A private, offline whiteboard in one HTML file. Sticky notes, shapes and arrows. No account, no server, no tracking — your data never leaves your browser. Free &amp; open source.">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#7C3AED">
+<meta property="og:type" content="website">
+<meta property="og:title" content="offline-whiteboard — a private, offline whiteboard">
+<meta property="og:description" content="One HTML file. Works fully offline, even air-gapped. No account, no server, no tracking. Free &amp; open source.">
+<meta property="og:image" content="screenshot.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧩</text></svg>">
+<!-- Zero external requests by design: no web fonts, no CDN, no analytics. System font stack only. -->
+<style>
+  /* ===== Design tokens — shadcn/ui Violet theme ===== */
+  :root {
+    --background: #FAFAFA;
+    --card: #FFFFFF;
+    --foreground: #09090B;
+    --muted: #F4F4F5;
+    --muted-foreground: #71717A;
+    --border: #E4E4E7;
+    --primary: #7C3AED;
+    --primary-hover: #6D28D9;
+    --primary-soft: #F5F3FF;
+    --ring: rgba(124, 58, 237, 0.35);
+    --destructive: #DC2626;
+    --destructive-bg: #FEF2F2;
+    --radius-xl: 12px;
+    --radius-md: 8px;
+    --radius-sm: 6px;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10), 0 2px 4px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--background);
+    color: var(--foreground);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* ===== Canvas ===== */
+  #board {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: default;
+    z-index: 0;
+  }
+  #board.is-pan { cursor: grab; }
+  #board.is-panning { cursor: grabbing; }
+  #board.is-create { cursor: crosshair; }
+  #board.is-connect { cursor: crosshair; }
+
+  /* ===== Shared: buttons / floating cards ===== */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+  }
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--foreground);
+    font-size: 13px; font-weight: 500;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    white-space: nowrap;
+  }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .btn:hover { background: var(--muted); border-color: #D4D4D8; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.icon { width: 34px; padding: 0; justify-content: center; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  .btn.danger:hover { background: var(--destructive-bg); border-color: #FECACA; color: var(--destructive); }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  /* ===== Top bar ===== */
+  .topbar {
+    position: fixed; top: 12px; left: 12px; right: 12px;
+    z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    pointer-events: none;
+  }
+  .topbar > * { pointer-events: auto; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px 8px 10px;
+  }
+  .brand .logo {
+    width: 30px; height: 30px; flex: none;
+    display: grid; place-items: center;
+    background: var(--primary); color: #fff;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xs);
+  }
+  .brand .logo svg { width: 18px; height: 18px; }
+  .brand .name { font-weight: 600; letter-spacing: -0.01em; font-size: 15px; line-height: 1; }
+  .brand .sub { color: var(--muted-foreground); font-size: 11px; line-height: 1; margin-top: 3px; }
+  .actions { display: flex; align-items: center; gap: 6px; padding: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .actions .sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; }
+  .saved-dot {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--muted-foreground); font-size: 12px; padding: 0 6px;
+  }
+  .saved-dot b { width: 7px; height: 7px; border-radius: 50%; background: #22C55E; display: inline-block; }
+  .saved-dot.dirty b { background: #F59E0B; }
+
+  /* ===== Left toolbar ===== */
+  .tools {
+    position: fixed; left: 12px; top: 50%; transform: translateY(-50%);
+    z-index: 10;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 6px;
+  }
+  .tool {
+    width: 42px; height: 42px;
+    display: grid; place-items: center;
+    border-radius: var(--radius-md);
+    color: #3F3F46;
+    position: relative;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .tool svg { width: 20px; height: 20px; }
+  .tool:hover { background: var(--muted); }
+  .tool.active { background: var(--primary-soft); color: var(--primary); }
+  .tool .kbd {
+    position: absolute; bottom: 3px; right: 4px;
+    font-size: 9px; font-weight: 600; color: var(--muted-foreground);
+  }
+  .tool.active .kbd { color: var(--primary); }
+  .tool-sep { height: 1px; background: var(--border); margin: 4px 6px; }
+
+  /* ===== Properties popover (color + delete) ===== */
+  .props {
+    position: fixed; z-index: 12;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+  }
+  .props .swatches { display: flex; gap: 5px; }
+  .props .swatch {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--border);
+    cursor: pointer; padding: 0;
+    transition: transform 100ms ease;
+  }
+  .props .swatch:hover { transform: scale(1.12); }
+  .props .swatch.sel { box-shadow: 0 0 0 2px var(--primary); }
+  .props .vsep { width: 1px; height: 24px; background: var(--border); }
+
+  /* ===== Zoom (bottom-right) ===== */
+  .zoombar {
+    position: fixed; right: 12px; bottom: 12px; z-index: 10;
+    display: flex; align-items: center; gap: 2px; padding: 5px;
+  }
+  .zoombar .zlabel {
+    min-width: 52px; text-align: center; font-size: 13px; font-weight: 600;
+    color: var(--foreground); padding: 0 4px;
+    background: none; border: none;
+  }
+  .zoombar .zlabel:hover { color: var(--primary); }
+
+  /* ===== Help (bottom-left) ===== */
+  .help-btn {
+    position: fixed; left: 12px; bottom: 12px; z-index: 10;
+    width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--card); border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    font-weight: 700; color: var(--muted-foreground);
+  }
+  .help-btn:hover { color: var(--primary); border-color: var(--primary); }
+  .help-panel {
+    position: fixed; left: 12px; bottom: 56px; z-index: 13;
+    width: 280px; padding: 16px 18px;
+  }
+  .help-panel h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+  .help-panel dl { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; margin: 0; font-size: 13px; }
+  .help-panel dt { display: flex; gap: 4px; }
+  .help-panel dd { margin: 0; color: var(--muted-foreground); }
+  .help-panel kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; background: var(--muted); border: 1px solid var(--border);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--foreground);
+    min-width: 20px; text-align: center;
+  }
+  .help-panel .foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted-foreground); }
+
+  /* ===== Text editor (overlay above the canvas) ===== */
+  #editor {
+    position: fixed; z-index: 20;
+    margin: 0; border: none; outline: none; resize: none; overflow: hidden;
+    background: transparent;
+    font-family: inherit;
+    color: #1f2937;
+    line-height: 1.3;
+    box-shadow: 0 0 0 2px var(--primary);
+    border-radius: 6px;
+    display: none;
+  }
+
+  [hidden] { display: none !important; }
+
+  @media (max-width: 720px) {
+    .brand .sub { display: none; }
+    .actions .label { display: none; }
+    .btn { padding: 0 9px; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="board" tabindex="0" role="application" aria-label="Whiteboard canvas. Use the toolbar on the left to add items."></canvas>
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="brand panel">
+      <div class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>
+      </div>
+      <div>
+        <div class="name">Whiteboard</div>
+        <div class="sub">private · offline · NoCodeWork</div>
+      </div>
+    </div>
+    <div class="actions panel">
+      <span class="saved-dot" id="savedDot" title="Save status"><b></b><span id="savedText" aria-live="polite">Saved</span></span>
+      <span class="sep"></span>
+      <button class="btn icon" id="btnUndo" title="Undo (⌘Z)" aria-label="Undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      </button>
+      <button class="btn icon" id="btnRedo" title="Redo (⌘⇧Z)" aria-label="Redo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+      </button>
+      <span class="sep"></span>
+      <button class="btn" id="btnPng" title="Download PNG image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg><span class="label">PNG</span></button>
+      <button class="btn" id="btnExport" title="Export .json file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="label">Export</span></button>
+      <button class="btn" id="btnImport" title="Import .json file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 11 4 4 4-4"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/></svg><span class="label">Import</span></button>
+      <span class="sep"></span>
+      <button class="btn danger icon" id="btnClear" title="Clear the board" aria-label="Clear board"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Left toolbar -->
+  <div class="tools panel" role="toolbar" aria-label="Tools">
+    <button class="tool" data-tool="select" title="Select &amp; move (V)" aria-label="Select"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l7 17 2.5-7L22 10.5 5 3z"/></svg><span class="kbd">V</span></button>
+    <button class="tool" data-tool="hand" title="Pan view (H or Space)" aria-label="Pan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0M14 10V4a2 2 0 0 0-4 0v2M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg><span class="kbd">H</span></button>
+    <div class="tool-sep"></div>
+    <button class="tool" data-tool="note" title="Sticky note (N)" aria-label="Sticky note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5z"/><path d="M15 3v6h6"/></svg><span class="kbd">N</span></button>
+    <button class="tool" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/></svg><span class="kbd">R</span></button>
+    <button class="tool" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg><span class="kbd">O</span></button>
+    <button class="tool" data-tool="text" title="Text (T)" aria-label="Text"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V5h16v2"/><path d="M12 5v14"/><path d="M9 19h6"/></svg><span class="kbd">T</span></button>
+    <button class="tool" data-tool="arrow" title="Arrow / connector — drag from one item to another (A)" aria-label="Arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg><span class="kbd">A</span></button>
+  </div>
+
+  <!-- Properties popover -->
+  <div class="props panel" id="props" hidden>
+    <div class="swatches" id="swatches"></div>
+    <div class="vsep"></div>
+    <button class="btn danger icon" id="btnDelete" title="Delete (Del)" aria-label="Delete selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+  </div>
+
+  <!-- Zoom -->
+  <div class="zoombar panel">
+    <button class="btn icon" id="btnZoomOut" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+    <button class="zlabel" id="zoomLabel" title="Fit to content">100%</button>
+    <button class="btn icon" id="btnZoomIn" title="Zoom in" aria-label="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button>
+    <span class="sep" style="margin:0 4px"></span>
+    <button class="btn icon" id="btnFit" title="Fit to content" aria-label="Fit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></svg></button>
+  </div>
+
+  <!-- Help -->
+  <button class="help-btn" id="helpBtn" title="Keyboard shortcuts" aria-label="Help" aria-expanded="false" aria-controls="helpPanel">?</button>
+  <div class="help-panel panel" id="helpPanel" tabindex="-1" hidden>
+    <h3>Shortcuts</h3>
+    <dl>
+      <dt><kbd>V</kbd></dt><dd>Select</dd>
+      <dt><kbd>H</kbd> / <kbd>Space</kbd></dt><dd>Pan view</dd>
+      <dt><kbd>N</kbd> <kbd>R</kbd> <kbd>O</kbd> <kbd>T</kbd></dt><dd>Note / rectangle / ellipse / text</dd>
+      <dt><kbd>A</kbd></dt><dd>Arrow (drag item→item)</dd>
+      <dt>double-click</dt><dd>Edit text / new note</dd>
+      <dt><kbd>⌫</kbd></dt><dd>Delete selection</dd>
+      <dt><kbd>⌘Z</kbd></dt><dd>Undo / <kbd>⌘⇧Z</kbd> redo</dd>
+      <dt><kbd>⌘D</kbd></dt><dd>Duplicate</dd>
+      <dt>wheel</dt><dd>Pan · <kbd>⌘</kbd>+wheel = zoom</dd>
+    </dl>
+    <div class="foot">Everything is saved automatically in this browser. Works fully offline — no network requests.</div>
+  </div>
+
+  <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+"use strict";
+(function () {
+  // ============================================================
+  //  offline-whiteboard — a private, offline whiteboard (single HTML file).
+  //  Canvas rendering in a world transform + a <textarea> overlay
+  //  for text editing. PNG export reuses the same drawing code → 1:1.
+  // ============================================================
+
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d');
+  const editor = document.getElementById('editor');
+
+  const STORAGE_KEY = 'offline-whiteboard-v1';
+  const MIN_W = 40, MIN_H = 30;     // min element size (world units)
+  const HANDLE = 9;                 // resize handle size (screen px)
+  const PAD = 14;                   // inner text padding (world units)
+  const ARROW_COLOR = '#52525B';
+  const TEXT_COLOR = '#27272A';
+
+  // Fill palette (fill + border) — pastels with readable dark text.
+  const COLORS = [
+    { name: 'yellow',     fill: '#FEF08A', stroke: '#EAB308' },
+    { name: 'pink',    fill: '#FBCFE8', stroke: '#EC4899' },
+    { name: 'blue', fill: '#BFDBFE', stroke: '#3B82F6' },
+    { name: 'green',   fill: '#BBF7D0', stroke: '#22C55E' },
+    { name: 'purple', fill: '#DDD6FE', stroke: '#8B5CF6' },
+    { name: 'orange', fill: '#FED7AA', stroke: '#F97316' },
+    { name: 'gray',     fill: '#E5E7EB', stroke: '#9CA3AF' },
+    { name: 'white',     fill: '#FFFFFF', stroke: '#D4D4D8' },
+  ];
+  const DEFAULT_FILL = { note: '#FEF08A', rect: '#BFDBFE', ellipse: '#DDD6FE' };
+
+  // ---------- State ----------
+  let elements = [];      // { id, type:'note'|'rect'|'ellipse'|'text', x,y,w,h, text, color, fontSize? }
+  let connections = [];   // { id, from, to }
+  let camera = { x: 0, y: 0, zoom: 1 };  // screen = world*zoom + (x,y)
+
+  let tool = 'select';
+  let selection = new Set();          // element ids
+  let selectedConn = null;            // connection id (separate selection)
+  let spaceHeld = false;
+  let capturedPointerId = null;       // active gesture pointer
+  let capturedButton = null;          // button that started the gesture
+
+  // Pointer state machine
+  let action = null;  // 'panning'|'moving'|'resizing'|'rubberband'|'connecting'|'placing'
+  let drag = null;    // working data for the current action
+  let hoverConnectTarget = null;
+
+  // History (undo/redo) — JSON snapshots
+  let history = [];
+  let histIndex = -1;
+
+  let saveTimer = null;
+
+  // ---------- Helpers: id, geometry ----------
+  function uid(p) {
+    const r = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : (Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+    return p + '_' + r;
+  }
+
+  function toWorld(sx, sy) {
+    return { x: (sx - camera.x) / camera.zoom, y: (sy - camera.y) / camera.zoom };
+  }
+  function clampZoom(z) { return Math.max(0.1, Math.min(4, z)); }
+
+  function elById(id) { return elements.find(e => e.id === id) || null; }
+  function center(e) { return { x: e.x + e.w / 2, y: e.y + e.h / 2 }; }
+  function rectOf(e) { return { x: e.x, y: e.y, w: e.w, h: e.h }; }
+
+  function pointInRect(px, py, r) {
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+  function pointInEllipse(px, py, e) {
+    const rx = e.w / 2, ry = e.h / 2, cx = e.x + rx, cy = e.y + ry;
+    if (rx <= 0 || ry <= 0) return false;
+    const dx = (px - cx) / rx, dy = (py - cy) / ry;
+    return dx * dx + dy * dy <= 1;
+  }
+  function hitElement(e, px, py) {
+    return e.type === 'ellipse' ? pointInEllipse(px, py, e) : pointInRect(px, py, rectOf(e));
+  }
+  function topElementAt(px, py) {
+    for (let i = elements.length - 1; i >= 0; i--) {
+      if (hitElement(elements[i], px, py)) return elements[i];
+    }
+    return null;
+  }
+
+  // Closest point on an element edge toward point p (for drawing connections).
+  function edgePoint(e, towardX, towardY) {
+    const c = center(e);
+    const dx = towardX - c.x, dy = towardY - c.y;
+    if (dx === 0 && dy === 0) return c;
+    if (e.type === 'ellipse') {
+      const rx = e.w / 2, ry = e.h / 2;
+      const t = 1 / Math.sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry));
+      return { x: c.x + dx * t, y: c.y + dy * t };
+    }
+    // rectangle: ray-to-edge intersection
+    const hw = e.w / 2, hh = e.h / 2;
+    const sx = dx === 0 ? Infinity : hw / Math.abs(dx);
+    const sy = dy === 0 ? Infinity : hh / Math.abs(dy);
+    const t = Math.min(sx, sy);
+    return { x: c.x + dx * t, y: c.y + dy * t };
+  }
+
+  // distance from a point to a segment (for selecting connections)
+  function distToSeg(px, py, ax, ay, bx, by) {
+    const dx = bx - ax, dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx, cy = ay + t * dy;
+    return Math.hypot(px - cx, py - cy);
+  }
+
+  // ---------- Text measuring / wrapping ----------
+  const measureCtx = document.createElement('canvas').getContext('2d');
+  function fontFor(e) {
+    const size = e.type === 'text' ? (e.fontSize || 24) : 16;
+    const weight = e.type === 'note' ? 500 : 400;
+    return `${weight} ${size}px Inter, ui-sans-serif, system-ui, sans-serif`;
+  }
+  function lineHeightFor(e) {
+    const size = e.type === 'text' ? (e.fontSize || 24) : 16;
+    return Math.round(size * 1.3);
+  }
+  // Wraps text to maxWidth (honoring existing \n). Returns an array of lines.
+  function wrapText(text, font, maxWidth) {
+    measureCtx.font = font;
+    const out = [];
+    const paragraphs = String(text || '').split('\n');
+    for (const para of paragraphs) {
+      if (para === '') { out.push(''); continue; }
+      if (maxWidth === Infinity) { out.push(para); continue; }
+      const words = para.split(' ');
+      let line = '';
+      for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        if (measureCtx.measureText(test).width > maxWidth && line) {
+          out.push(line);
+          line = w;
+        } else {
+          line = test;
+        }
+      }
+      out.push(line);
+    }
+    return out;
+  }
+  // Recomputes a text element size from its content.
+  function remeasureText(e) {
+    measureCtx.font = fontFor(e);
+    const lines = String(e.text || ' ').split('\n');
+    let max = 0;
+    for (const ln of lines) max = Math.max(max, measureCtx.measureText(ln || ' ').width);
+    e.w = Math.max(20, Math.ceil(max) + 4);
+    e.h = Math.max(lineHeightFor(e), lines.length * lineHeightFor(e));
+  }
+
+  // ============================================================
+  //  RENDERING
+  // ============================================================
+  let dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  function resize() {
+    dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    draw();
+  }
+
+  function draw() {
+    // background + reset
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#FAFAFA';
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    drawGrid();
+
+    // world transform
+    ctx.setTransform(camera.zoom * dpr, 0, 0, camera.zoom * dpr, camera.x * dpr, camera.y * dpr);
+
+    drawConnections(ctx);
+    drawElements(ctx);
+    drawConnectingPreview();
+    drawSelection();
+
+    // screen-space overlays
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawRubberband();
+
+    syncEditor();
+    updateProps(); // keep the properties popover glued to the selection on pan/zoom
+  }
+
+  function drawGrid() {
+    const step = 28 * camera.zoom;
+    if (step < 14) return; // too dense when zoomed out — skip
+    const ox = camera.x % step, oy = camera.y % step;
+    ctx.fillStyle = '#E4E4E7';
+    const r = camera.zoom < 0.6 ? 1 : 1.4;
+    for (let x = ox; x < window.innerWidth; x += step) {
+      for (let y = oy; y < window.innerHeight; y += step) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  function drawElements(c) {
+    for (const e of elements) drawElement(c, e);
+  }
+
+  function drawElement(c, e) {
+    const col = COLORS.find(k => k.fill.toLowerCase() === (e.color || '').toLowerCase());
+    const stroke = col ? col.stroke : '#D4D4D8';
+
+    if (e.type === 'note') {
+      c.save();
+      c.shadowColor = 'rgba(0,0,0,0.12)';
+      c.shadowBlur = 8; c.shadowOffsetY = 3;
+      c.fillStyle = e.color || DEFAULT_FILL.note;
+      roundRect(c, e.x, e.y, e.w, e.h, 8); c.fill();
+      c.restore();
+      c.strokeStyle = 'rgba(0,0,0,0.06)'; c.lineWidth = 1;
+      roundRect(c, e.x, e.y, e.w, e.h, 8); c.stroke();
+      drawText(c, e, 'top');
+    } else if (e.type === 'rect') {
+      c.fillStyle = e.color || DEFAULT_FILL.rect;
+      roundRect(c, e.x, e.y, e.w, e.h, 10); c.fill();
+      c.strokeStyle = stroke; c.lineWidth = 2;
+      roundRect(c, e.x, e.y, e.w, e.h, 10); c.stroke();
+      drawText(c, e, 'top');
+    } else if (e.type === 'ellipse') {
+      c.fillStyle = e.color || DEFAULT_FILL.ellipse;
+      c.beginPath();
+      c.ellipse(e.x + e.w / 2, e.y + e.h / 2, e.w / 2, e.h / 2, 0, 0, Math.PI * 2);
+      c.fill();
+      c.strokeStyle = stroke; c.lineWidth = 2; c.stroke();
+      drawText(c, e, 'top');
+    } else if (e.type === 'text') {
+      drawText(c, e, 'top');
+    }
+  }
+
+  function drawText(c, e, valign) {
+    if (e._editing) return; // the textarea handles drawing while editing
+    const txt = e.text || '';
+    if (!txt && e.type === 'text') return;
+    const font = fontFor(e);
+    const lh = lineHeightFor(e);
+    const maxW = e.type === 'text' ? Infinity : e.w - PAD * 2;
+    const lines = wrapText(txt, font, maxW);
+    c.fillStyle = TEXT_COLOR;
+    c.font = font;
+    c.textBaseline = 'top';
+
+    if (e.type === 'text') {
+      let y = e.y;
+      c.textAlign = 'left';
+      for (const ln of lines) { c.fillText(ln, e.x, y); y += lh; }
+      return;
+    }
+
+    c.textAlign = 'center';
+    const cx = e.x + e.w / 2;
+    const blockH = lines.length * lh;
+    let y = valign === 'middle'
+      ? e.y + Math.max(PAD, (e.h - blockH) / 2)
+      : e.y + PAD;
+    // clip to the element frame
+    c.save();
+    roundRect(c, e.x, e.y, e.w, e.h, 8); c.clip();
+    for (const ln of lines) { c.fillText(ln, cx, y); y += lh; }
+    c.restore();
+  }
+
+  function drawConnections(c) {
+    for (const cn of connections) {
+      const a = elById(cn.from), b = elById(cn.to);
+      if (!a || !b) continue;
+      const ca = center(a), cb = center(b);
+      const p1 = edgePoint(a, cb.x, cb.y);
+      const p2 = edgePoint(b, ca.x, ca.y);
+      const sel = selectedConn === cn.id;
+      c.strokeStyle = sel ? '#7C3AED' : ARROW_COLOR;
+      c.fillStyle = c.strokeStyle;
+      c.lineWidth = sel ? 3 : 2;
+      c.beginPath(); c.moveTo(p1.x, p1.y); c.lineTo(p2.x, p2.y); c.stroke();
+      drawArrowhead(c, p1.x, p1.y, p2.x, p2.y);
+    }
+  }
+
+  function drawArrowhead(c, fromX, fromY, x, y) {
+    const ang = Math.atan2(y - fromY, x - fromX);
+    const s = 11;
+    c.beginPath();
+    c.moveTo(x, y);
+    c.lineTo(x - s * Math.cos(ang - 0.4), y - s * Math.sin(ang - 0.4));
+    c.lineTo(x - s * Math.cos(ang + 0.4), y - s * Math.sin(ang + 0.4));
+    c.closePath();
+    c.fill();
+  }
+
+  function drawConnectingPreview() {
+    if (action !== 'connecting' || !drag) return;
+    const a = elById(drag.fromId);
+    if (!a) return;
+    const tx = drag.curX, ty = drag.curY;
+    const p1 = edgePoint(a, tx, ty);
+    let p2 = { x: tx, y: ty };
+    if (hoverConnectTarget && hoverConnectTarget !== a.id) {
+      const b = elById(hoverConnectTarget);
+      if (b) p2 = edgePoint(b, center(a).x, center(a).y);
+    }
+    ctx.strokeStyle = '#7C3AED'; ctx.fillStyle = '#7C3AED'; ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+    ctx.setLineDash([]);
+    drawArrowhead(ctx, p1.x, p1.y, p2.x, p2.y);
+  }
+
+  function drawSelection() {
+    if (hoverConnectTarget && action === 'connecting') {
+      const t = elById(hoverConnectTarget);
+      if (t) outline(t, '#7C3AED', 2.5);
+    }
+    for (const id of selection) {
+      const e = elById(id);
+      if (e) outline(e, '#7C3AED', 1.5);
+    }
+    // uchwyt skalowania tylko dla pojedynczego zaznaczenia (nie tekst)
+    if (selection.size === 1) {
+      const e = elById([...selection][0]);
+      if (e && e.type !== 'text') {
+        const hs = HANDLE / camera.zoom;
+        const hx = e.x + e.w, hy = e.y + e.h;
+        ctx.fillStyle = '#7C3AED';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5 / camera.zoom;
+        ctx.beginPath();
+        ctx.arc(hx, hy, hs / 1.6, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      }
+    }
+  }
+  function outline(e, color, w) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w / camera.zoom;
+    const m = 4 / camera.zoom;
+    if (e.type === 'ellipse') {
+      ctx.beginPath();
+      ctx.ellipse(e.x + e.w / 2, e.y + e.h / 2, e.w / 2 + m, e.h / 2 + m, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      roundRect(ctx, e.x - m, e.y - m, e.w + 2 * m, e.h + 2 * m, 8); ctx.stroke();
+    }
+  }
+
+  function drawRubberband() {
+    if (action !== 'rubberband' || !drag) return;
+    const x = Math.min(drag.sx, drag.cx), y = Math.min(drag.sy, drag.cy);
+    const w = Math.abs(drag.cx - drag.sx), h = Math.abs(drag.cy - drag.sy);
+    ctx.fillStyle = 'rgba(124,58,237,0.08)';
+    ctx.strokeStyle = '#7C3AED';
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  // ============================================================
+  //  CREATE / MODIFY ELEMENTS
+  // ============================================================
+  function defaultSize(type) {
+    if (type === 'note') return { w: 180, h: 130 };
+    if (type === 'rect') return { w: 170, h: 100 };
+    if (type === 'ellipse') return { w: 150, h: 110 };
+    return { w: 120, h: 32 };
+  }
+  function makeElement(type, x, y) {
+    const s = defaultSize(type);
+    const e = { id: uid(type), type, x, y, w: s.w, h: s.h, text: '', color: DEFAULT_FILL[type] || '#FFFFFF' };
+    if (type === 'text') { e.fontSize = 24; e.text = ''; }
+    return e;
+  }
+
+  function deleteSelected() {
+    if (selectedConn) {
+      connections = connections.filter(c => c.id !== selectedConn);
+      selectedConn = null;
+      commit();
+      return;
+    }
+    if (selection.size === 0) return;
+    const ids = selection;
+    elements = elements.filter(e => !ids.has(e.id));
+    connections = connections.filter(c => !ids.has(c.from) && !ids.has(c.to));
+    selection = new Set();
+    commit();
+  }
+
+  function duplicateSelected() {
+    if (selection.size === 0) return;
+    const map = {};
+    const clones = [];
+    for (const e of elements) {
+      if (!selection.has(e.id)) continue;
+      const n = JSON.parse(JSON.stringify(e));
+      n.id = uid(e.type); n.x += 24; n.y += 24; delete n._editing;
+      map[e.id] = n.id;
+      clones.push(n);
+    }
+    elements.push(...clones);
+    // also duplicate connections whose both ends are selected
+    for (const c of connections.slice()) {
+      if (map[c.from] && map[c.to]) {
+        connections.push({ id: uid('c'), from: map[c.from], to: map[c.to] });
+      }
+    }
+    selection = new Set(clones.map(c => c.id));
+    selectedConn = null;
+    commit();
+  }
+
+  function setColor(fill) {
+    let changed = false;
+    for (const id of selection) {
+      const e = elById(id);
+      if (e && e.type !== 'text') { e.color = fill; changed = true; }
+    }
+    if (changed) commit();
+  }
+
+  // ============================================================
+  //  TEXT EDITOR (overlay)
+  // ============================================================
+  let editing = null; // element being edited
+
+  function openEditor(e) {
+    closeEditor();
+    editing = e;
+    e._editing = true;
+    editor.value = e.text || '';
+    editor.style.display = 'block';
+    editor.style.textAlign = e.type === 'text' ? 'left' : 'center';
+    syncEditor();
+    draw();
+    editor.focus();
+    // caret to end
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+    if (e.type === 'text') autoGrowEditor();
+  }
+
+  function syncEditor() {
+    if (!editing) return;
+    const e = editing;
+    const z = camera.zoom;
+    const sx = e.x * z + camera.x;
+    const sy = e.y * z + camera.y;
+    const size = (e.type === 'text' ? (e.fontSize || 24) : 16) * z;
+    editor.style.left = sx + 'px';
+    editor.style.top = sy + 'px';
+    editor.style.font = (e.type === 'note' ? '500 ' : '400 ') + size + 'px Inter, ui-sans-serif, system-ui, sans-serif';
+    editor.style.lineHeight = 1.3;
+    editor.style.color = TEXT_COLOR;
+    if (e.type === 'text') {
+      editor.style.width = Math.max(40, e.w * z + 6) + 'px';
+      editor.style.padding = '0';
+      editor.style.height = Math.max(size * 1.3, e.h * z) + 'px';
+      editor.style.textAlign = 'left';
+    } else {
+      editor.style.width = (e.w * z) + 'px';
+      editor.style.height = (e.h * z) + 'px';
+      editor.style.padding = (PAD * z) + 'px';
+      editor.style.textAlign = 'center';
+    }
+  }
+
+  function autoGrowEditor() {
+    if (!editing || editing.type !== 'text') return;
+    editor.style.height = 'auto';
+    editor.style.height = editor.scrollHeight + 'px';
+  }
+
+  function closeEditor() {
+    if (!editing) return;
+    const e = editing;
+    const newText = editor.value;
+    const changed = (e.text || '') !== newText;
+    e.text = newText;
+    delete e._editing;
+    editing = null;
+    editor.style.display = 'none';
+    editor.value = '';
+    // remove an empty text element
+    if (e.type === 'text' && e.text.trim() === '') {
+      elements = elements.filter(x => x.id !== e.id);
+      selection.delete(e.id);
+    } else if (e.type === 'text') {
+      remeasureText(e);
+    }
+    if (changed) commit(); else { scheduleSave(); draw(); }
+  }
+
+  editor.addEventListener('input', () => {
+    if (!editing) return;
+    editing.text = editor.value;
+    if (editing.type === 'text') { remeasureText(editing); autoGrowEditor(); }
+    draw();
+  });
+  editor.addEventListener('blur', closeEditor);
+  editor.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    if (ev.key === 'Escape') { ev.preventDefault(); closeEditor(); canvas.focus(); }
+    // Enter commits a text element (Shift+Enter = newline); in a note Enter = newline.
+    if (ev.key === 'Enter' && !ev.shiftKey && editing && editing.type === 'text') {
+      ev.preventDefault(); closeEditor();
+    }
+  });
+
+  // ============================================================
+  //  POINTER EVENTS
+  // ============================================================
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onCancel);
+  canvas.addEventListener('dblclick', onDblClick);
+
+  function cancelAction() {
+    if (drag) {
+      if (action === 'placing') { elements = elements.filter(x => x.id !== drag.id); selection.delete(drag.id); }
+      else if (action === 'moving' && drag.orig) {
+        for (const id in drag.orig) { const e = elById(id); if (e) { e.x = drag.orig[id].x; e.y = drag.orig[id].y; } }
+      } else if (action === 'resizing') {
+        const e = elById(drag.id); if (e) { e.x = drag.ox; e.y = drag.oy; e.w = drag.ow; e.h = drag.oh; }
+      }
+    }
+    action = null; drag = null; hoverConnectTarget = null;
+    try { if (capturedPointerId != null) canvas.releasePointerCapture(capturedPointerId); } catch (e) {}
+    capturedPointerId = null; capturedButton = null;
+    canvas.classList.remove('is-panning');
+  }
+  function onCancel(ev) {
+    if (capturedPointerId != null && ev.pointerId !== capturedPointerId) return;
+    cancelAction();
+    draw();
+  }
+
+  function capturePointer(id, btn) {
+    try { canvas.setPointerCapture(id); } catch (e) {}
+    capturedPointerId = id; capturedButton = btn;
+  }
+
+  function onDown(ev) {
+    if (editing) { closeEditor(); }
+    if (action) return; // a gesture is already running — ignore another pointer/button (multi-touch, right-click)
+    const sx = ev.clientX, sy = ev.clientY;
+    const w = toWorld(sx, sy);
+
+    // pan: space / hand tool / middle button
+    if (spaceHeld || tool === 'hand' || ev.button === 1) {
+      action = 'panning';
+      drag = { sx, sy, camX: camera.x, camY: camera.y };
+      capturePointer(ev.pointerId, ev.button);
+      canvas.classList.add('is-panning');
+      return;
+    }
+    if (ev.button !== 0) return;
+    capturePointer(ev.pointerId, 0);
+
+    if (tool === 'select') {
+      // priority: resize handle regardless of z-order
+      if (selection.size === 1) {
+        const se = elById([...selection][0]);
+        if (se && se.type !== 'text' && onResizeHandle(se, w.x, w.y)) {
+          action = 'resizing';
+          drag = { id: se.id, sx: w.x, sy: w.y, ox: se.x, oy: se.y, ow: se.w, oh: se.h };
+          return;
+        }
+      }
+      const hit = topElementAt(w.x, w.y);
+
+      if (hit) {
+        selectedConn = null;
+        if (ev.shiftKey) {
+          if (selection.has(hit.id)) selection.delete(hit.id); else selection.add(hit.id);
+        } else if (!selection.has(hit.id)) {
+          selection = new Set([hit.id]);
+        }
+        // prepare move
+        action = 'moving';
+        drag = { sx: w.x, sy: w.y, moved: false, orig: {} };
+        for (const id of selection) { const e = elById(id); if (e) drag.orig[id] = { x: e.x, y: e.y }; }
+        updateProps();
+        draw();
+        return;
+      }
+
+      // empty click: maybe a connection?
+      const cn = connectionAt(w.x, w.y);
+      if (cn) {
+        selectedConn = cn.id; selection = new Set();
+        action = null; drag = null;
+        updateProps(); draw();
+        return;
+      }
+      // rubber-band selection
+      if (!ev.shiftKey) { selection = new Set(); selectedConn = null; }
+      action = 'rubberband';
+      drag = { sx, sy, cx: sx, cy: sy, base: new Set(selection) };
+      updateProps();
+      draw();
+      return;
+    }
+
+    if (tool === 'arrow') {
+      const hit = topElementAt(w.x, w.y);
+      if (hit) {
+        action = 'connecting';
+        drag = { fromId: hit.id, curX: w.x, curY: w.y };
+        draw();
+      }
+      return;
+    }
+
+    if (tool === 'note' || tool === 'rect' || tool === 'ellipse' || tool === 'text') {
+      const e = makeElement(tool, w.x, w.y);
+      if (tool === 'text') {
+        elements.push(e);
+        selection = new Set([e.id]); selectedConn = null;
+        setTool('select');
+        commit();
+        openEditor(e);
+        return;
+      }
+      // shapes/notes: click = default size, drag = custom size
+      e.w = 1; e.h = 1;
+      elements.push(e);
+      selection = new Set([e.id]); selectedConn = null;
+      action = 'placing';
+      drag = { id: e.id, sx: w.x, sy: w.y, type: tool };
+      draw();
+      return;
+    }
+  }
+
+  function onMove(ev) {
+    if (capturedPointerId != null && ev.pointerId !== capturedPointerId) return;
+    const sx = ev.clientX, sy = ev.clientY;
+    const w = toWorld(sx, sy);
+
+    if (action === 'panning') {
+      camera.x = drag.camX + (sx - drag.sx);
+      camera.y = drag.camY + (sy - drag.sy);
+      scheduleSave();
+      draw();
+      return;
+    }
+    if (action === 'moving') {
+      const dx = w.x - drag.sx, dy = w.y - drag.sy;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) drag.moved = true;
+      for (const id of selection) {
+        const e = elById(id), o = drag.orig[id];
+        if (e && o) { e.x = o.x + dx; e.y = o.y + dy; }
+      }
+      draw();
+      return;
+    }
+    if (action === 'resizing') {
+      const e = elById(drag.id);
+      if (e) {
+        e.w = Math.max(MIN_W, drag.ow + (w.x - drag.sx));
+        e.h = Math.max(MIN_H, drag.oh + (w.y - drag.sy));
+        syncEditor();
+      }
+      draw();
+      return;
+    }
+    if (action === 'placing') {
+      const e = elById(drag.id);
+      if (e) {
+        e.x = Math.min(drag.sx, w.x); e.y = Math.min(drag.sy, w.y);
+        e.w = Math.abs(w.x - drag.sx); e.h = Math.abs(w.y - drag.sy);
+      }
+      draw();
+      return;
+    }
+    if (action === 'rubberband') {
+      drag.cx = sx; drag.cy = sy;
+      const a = toWorld(Math.min(drag.sx, sx), Math.min(drag.sy, sy));
+      const b = toWorld(Math.max(drag.sx, sx), Math.max(drag.sy, sy));
+      const r = { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+      const sel = new Set(drag.base);
+      for (const e of elements) {
+        if (rectsIntersect(r, rectOf(e))) sel.add(e.id);
+      }
+      selection = sel;
+      updateProps();
+      draw();
+      return;
+    }
+    if (action === 'connecting') {
+      drag.curX = w.x; drag.curY = w.y;
+      const t = topElementAt(w.x, w.y);
+      hoverConnectTarget = (t && t.id !== drag.fromId) ? t.id : null;
+      draw();
+      return;
+    }
+
+    // no action: cursor over the resize handle
+    if (tool === 'select' && selection.size === 1) {
+      const e = elById([...selection][0]);
+      canvas.style.cursor = (e && e.type !== 'text' && onResizeHandle(e, w.x, w.y)) ? 'nwse-resize' : '';
+    } else if (canvas.style.cursor) {
+      canvas.style.cursor = '';
+    }
+  }
+
+  function onUp(ev) {
+    if (capturedPointerId != null && ev.pointerId !== capturedPointerId) return;
+    if (action && capturedButton != null && ev.pointerType === 'mouse' && ev.button !== capturedButton) return;
+    try { canvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+    capturedPointerId = null; capturedButton = null;
+    canvas.classList.remove('is-panning');
+
+    if (action === 'panning') { action = null; drag = null; scheduleSave(); return; }
+
+    if (action === 'moving') {
+      if (drag.moved) commit(); else { updateProps(); }
+      action = null; drag = null;
+      return;
+    }
+    if (action === 'resizing') { commit(); action = null; drag = null; return; }
+
+    if (action === 'placing') {
+      const e = elById(drag.id);
+      if (e) {
+        if (e.w < MIN_W || e.h < MIN_H) { // a plain click → default size, centered on the click
+          const s = defaultSize(e.type);
+          e.w = s.w; e.h = s.h;
+          e.x = drag.sx - s.w / 2; e.y = drag.sy - s.h / 2;
+        }
+        setTool('select');
+        selection = new Set([e.id]);
+        commit();
+        if (e.type === 'note') openEditor(e);
+      }
+      action = null; drag = null;
+      return;
+    }
+    if (action === 'rubberband') { action = null; drag = null; updateProps(); draw(); return; }
+
+    if (action === 'connecting') {
+      if (hoverConnectTarget && hoverConnectTarget !== drag.fromId) {
+        const exists = connections.some(c =>
+          (c.from === drag.fromId && c.to === hoverConnectTarget) ||
+          (c.from === hoverConnectTarget && c.to === drag.fromId));
+        if (!exists) {
+          connections.push({ id: uid('c'), from: drag.fromId, to: hoverConnectTarget });
+          commit();
+        }
+      }
+      hoverConnectTarget = null; action = null; drag = null;
+      draw();
+      return;
+    }
+  }
+
+  function onDblClick(ev) {
+    const w = toWorld(ev.clientX, ev.clientY);
+    const hit = topElementAt(w.x, w.y);
+    if (hit) {
+      selection = new Set([hit.id]); selectedConn = null;
+      updateProps();
+      openEditor(hit);
+    } else if (tool === 'select') {
+      // double-click on empty = quick note
+      const e = makeElement('note', w.x - 90, w.y - 65);
+      elements.push(e);
+      selection = new Set([e.id]);
+      commit();
+      openEditor(e);
+    }
+  }
+
+  function onResizeHandle(e, px, py) {
+    const hs = (HANDLE + 4) / camera.zoom;
+    return Math.abs(px - (e.x + e.w)) <= hs && Math.abs(py - (e.y + e.h)) <= hs;
+  }
+  function connectionAt(px, py) {
+    const tol = 6 / camera.zoom;
+    for (let i = connections.length - 1; i >= 0; i--) {
+      const cn = connections[i];
+      const a = elById(cn.from), b = elById(cn.to);
+      if (!a || !b) continue;
+      const ca = center(a), cb = center(b);
+      const p1 = edgePoint(a, cb.x, cb.y), p2 = edgePoint(b, ca.x, ca.y);
+      if (distToSeg(px, py, p1.x, p1.y, p2.x, p2.y) <= tol) return cn;
+    }
+    return null;
+  }
+  function rectsIntersect(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  // ---------- Zoom / wheel pan ----------
+  canvas.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    if (ev.ctrlKey || ev.metaKey) {
+      zoomAt(ev.clientX, ev.clientY, Math.exp(-ev.deltaY * 0.0015));
+    } else {
+      camera.x -= ev.deltaX;
+      camera.y -= ev.deltaY;
+      scheduleSave();
+      draw();
+    }
+  }, { passive: false });
+
+  function zoomAt(sx, sy, factor) {
+    const before = toWorld(sx, sy);
+    camera.zoom = clampZoom(camera.zoom * factor);
+    camera.x = sx - before.x * camera.zoom;
+    camera.y = sy - before.y * camera.zoom;
+    updateZoomLabel();
+    scheduleSave();
+    draw();
+  }
+  function zoomButton(factor) {
+    zoomAt(window.innerWidth / 2, window.innerHeight / 2, factor);
+  }
+
+  function fitToContent() {
+    if (elements.length === 0) { camera = { x: 0, y: 0, zoom: 1 }; updateZoomLabel(); scheduleSave(); draw(); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const e of elements) {
+      minX = Math.min(minX, e.x); minY = Math.min(minY, e.y);
+      maxX = Math.max(maxX, e.x + e.w); maxY = Math.max(maxY, e.y + e.h);
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) { // anti-NaN: do not kill the camera
+      camera = { x: 0, y: 0, zoom: 1 }; updateZoomLabel(); scheduleSave(); draw(); return;
+    }
+    const pad = 80;
+    const cw = window.innerWidth, ch = window.innerHeight;
+    const z = clampZoom(Math.min((cw - pad * 2) / (maxX - minX || 1), (ch - pad * 2) / (maxY - minY || 1)));
+    camera.zoom = Math.min(z, 1.5);
+    camera.x = (cw - (maxX - minX) * camera.zoom) / 2 - minX * camera.zoom;
+    camera.y = (ch - (maxY - minY) * camera.zoom) / 2 - minY * camera.zoom;
+    updateZoomLabel();
+    scheduleSave();
+    draw();
+  }
+
+  // ============================================================
+  //  KEYBOARD
+  // ============================================================
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !helpPanel.hidden) { helpPanel.hidden = true; helpBtn.setAttribute('aria-expanded', 'false'); return; }
+    if (editing) return; // the editor handles its own keys
+    const meta = ev.metaKey || ev.ctrlKey;
+
+    if (meta && ev.key.toLowerCase() === 'z') {
+      ev.preventDefault();
+      if (ev.shiftKey) redo(); else undo();
+      return;
+    }
+    if (meta && ev.key.toLowerCase() === 'y') { ev.preventDefault(); redo(); return; }
+    if (meta && ev.key.toLowerCase() === 'a') {
+      ev.preventDefault();
+      selection = new Set(elements.map(e => e.id)); selectedConn = null;
+      updateProps(); draw(); return;
+    }
+    if (meta && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelected(); return; }
+
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
+      ev.preventDefault(); deleteSelected(); return;
+    }
+    if (ev.key === 'Escape') {
+      if (action) cancelAction();
+      else { selection = new Set(); selectedConn = null; }
+      updateProps(); draw(); return;
+    }
+    if (ev.code === 'Space' && !spaceHeld) {
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === 'BUTTON' || ae.tagName === 'INPUT')) return; // don't clash with focus on UI
+      spaceHeld = true; canvas.classList.add('is-pan'); ev.preventDefault(); return;
+    }
+    if (meta || ev.altKey) return;
+    const map = { v: 'select', h: 'hand', n: 'note', r: 'rect', o: 'ellipse', t: 'text', a: 'arrow' };
+    const t = map[ev.key.toLowerCase()];
+    if (t) { setTool(t); }
+  });
+  window.addEventListener('keyup', (ev) => {
+    if (ev.code === 'Space') { spaceHeld = false; canvas.classList.remove('is-pan'); }
+  });
+
+  // ============================================================
+  //  HISTORY / PERSISTENCE
+  // ============================================================
+  const stripEditing = (k, v) => k === '_editing' ? undefined : v;
+  function snapshot() { return JSON.stringify({ elements, connections }, stripEditing); }
+  function restore(snap) {
+    const d = JSON.parse(snap);
+    elements = d.elements || [];
+    connections = d.connections || [];
+    for (const e of elements) delete e._editing;
+    selection = new Set(); selectedConn = null;
+  }
+  function pushHistory() {
+    const s = snapshot();
+    if (history[histIndex] === s) { updateUndoButtons(); return; } // skip a duplicate (empty step)
+    history = history.slice(0, histIndex + 1);
+    history.push(s);
+    if (history.length > 80) history.shift();
+    histIndex = history.length - 1;
+    updateUndoButtons();
+  }
+  // commit = persist a model change: history + save + render + panel
+  function commit() {
+    pushHistory();
+    scheduleSave();
+    updateProps();
+    draw();
+  }
+  function undo() {
+    if (histIndex <= 0) return;
+    histIndex--; restore(history[histIndex]);
+    scheduleSave(); updateProps(); updateUndoButtons(); draw();
+  }
+  function redo() {
+    if (histIndex >= history.length - 1) return;
+    histIndex++; restore(history[histIndex]);
+    scheduleSave(); updateProps(); updateUndoButtons(); draw();
+  }
+  function updateUndoButtons() {
+    document.getElementById('btnUndo').disabled = histIndex <= 0;
+    document.getElementById('btnRedo').disabled = histIndex >= history.length - 1;
+  }
+
+  function scheduleSave() {
+    setSaved(false);
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 350);
+  }
+  function saveNow() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ elements, connections, camera }, stripEditing));
+      setSaved(true);
+    } catch (e) { setSaved('error'); } // e.g. private mode / quota exceeded
+  }
+  function setSaved(state) {
+    const dot = document.getElementById('savedDot');
+    document.getElementById('savedText').textContent =
+      state === true ? 'Saved' : state === 'error' ? 'Save failed (private mode?)' : 'Saving…';
+    dot.classList.toggle('dirty', state !== true);
+  }
+  // Sanitize loaded data — guards against NaN / a corrupt file (otherwise the canvas vanishes silently).
+  const ALLOWED_TYPES = new Set(['note', 'rect', 'ellipse', 'text']);
+  function sanitizeEls(arr) {
+    const seen = new Set();
+    return (Array.isArray(arr) ? arr : [])
+      .filter(e => e && ALLOWED_TYPES.has(e.type))
+      .map(e => {
+        let id = (typeof e.id === 'string' && e.id) ? e.id : uid(e.type);
+        while (seen.has(id)) id = uid(e.type);
+        seen.add(id);
+        const o = {
+          id, type: e.type,
+          x: Number.isFinite(+e.x) ? +e.x : 0,
+          y: Number.isFinite(+e.y) ? +e.y : 0,
+          w: Number.isFinite(+e.w) ? Math.max(1, +e.w) : 40,
+          h: Number.isFinite(+e.h) ? Math.max(1, +e.h) : 30,
+          text: typeof e.text === 'string' ? e.text : '',
+          color: typeof e.color === 'string' ? e.color : '#FFFFFF',
+        };
+        if (e.type === 'text') o.fontSize = Number.isFinite(+e.fontSize) ? +e.fontSize : 24;
+        return o;
+      });
+  }
+  function sanitizeConns(arr, els) {
+    const ids = new Set(els.map(e => e.id));
+    const seen = new Set();
+    return (Array.isArray(arr) ? arr : [])
+      .filter(c => c && ids.has(c.from) && ids.has(c.to) && c.from !== c.to)
+      .map(c => ({ id: (typeof c.id === 'string' && c.id) ? c.id : uid('c'), from: c.from, to: c.to }))
+      .filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
+  }
+  function sanitizeCamera(c) {
+    c = c || {};
+    return {
+      x: Number.isFinite(+c.x) ? +c.x : 0,
+      y: Number.isFinite(+c.y) ? +c.y : 0,
+      zoom: clampZoom(Number.isFinite(+c.zoom) && +c.zoom > 0 ? +c.zoom : 1),
+    };
+  }
+
+  function loadSaved() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const d = JSON.parse(raw);
+      elements = sanitizeEls(d.elements);
+      connections = sanitizeConns(d.connections, elements);
+      camera = sanitizeCamera(d.camera);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // ============================================================
+  //  IMPORT / EXPORT
+  // ============================================================
+  function exportJSON() {
+    const data = JSON.stringify({ app: 'offline-whiteboard', version: 1, elements, connections }, stripEditing, 2);
+    download(new Blob([data], { type: 'application/json' }), 'whiteboard.json');
+  }
+  function importJSON(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const d = JSON.parse(reader.result);
+        const els = sanitizeEls(d.elements);
+        if (els.length === 0) throw new Error('file has no valid elements');
+        elements = els;
+        connections = sanitizeConns(d.connections, elements);
+        selection = new Set(); selectedConn = null;
+        camera = { x: 0, y: 0, zoom: 1 };
+        history = []; histIndex = -1; pushHistory();
+        saveNow();
+        fitToContent();
+      } catch (err) {
+        alert('Could not load file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function exportPNG() {
+    if (elements.length === 0) { alert('The board is empty.'); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const e of elements) {
+      minX = Math.min(minX, e.x); minY = Math.min(minY, e.y);
+      maxX = Math.max(maxX, e.x + e.w); maxY = Math.max(maxY, e.y + e.h);
+    }
+    const pad = 48;
+    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+    const w = maxX - minX, h = maxY - minY;
+    // canvas size limit (Safari ~16384 px/side); scale down instead of a silent crash
+    const MAX_SIDE = 16384, MAX_AREA = MAX_SIDE * MAX_SIDE;
+    let scale = 2;
+    while (scale > 0.25 && (w * scale > MAX_SIDE || h * scale > MAX_SIDE || (w * scale) * (h * scale) > MAX_AREA)) scale -= 0.25;
+    if (w * scale > MAX_SIDE || h * scale > MAX_SIDE) {
+      alert('The board is too large to export as PNG. Move items closer together.');
+      return;
+    }
+    const off = document.createElement('canvas');
+    off.width = Math.ceil(w * scale);
+    off.height = Math.ceil(h * scale);
+    const oc = off.getContext('2d');
+    oc.fillStyle = '#FFFFFF';
+    oc.fillRect(0, 0, off.width, off.height);
+    oc.setTransform(scale, 0, 0, scale, -minX * scale, -minY * scale);
+    drawConnections(oc);
+    drawElements(oc);
+    off.toBlob((blob) => {
+      if (!blob) { alert('Could not generate PNG (the board may be too large).'); return; }
+      download(blob, 'whiteboard.png');
+    }, 'image/png');
+  }
+
+  function download(blob, name) {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ============================================================
+  //  UI: tools, properties, zoom, help
+  // ============================================================
+  function setTool(t) {
+    tool = t;
+    document.querySelectorAll('.tool').forEach(b => {
+      const on = b.dataset.tool === t;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    canvas.classList.toggle('is-create', ['note', 'rect', 'ellipse', 'text'].includes(t));
+    canvas.classList.toggle('is-pan', t === 'hand');
+    canvas.classList.toggle('is-connect', t === 'arrow');
+    // (selection is kept across tool changes; handles only show under the select tool)
+    updateProps();
+  }
+  document.querySelectorAll('.tool').forEach(b => {
+    b.addEventListener('click', () => setTool(b.dataset.tool));
+  });
+
+  // color palette (swatches)
+  const swatchWrap = document.getElementById('swatches');
+  COLORS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'swatch';
+    b.style.background = c.fill;
+    b.title = c.name;
+    b.setAttribute('aria-label', 'Color: ' + c.name);
+    b.dataset.fill = c.fill;
+    b.addEventListener('click', () => setColor(c.fill));
+    swatchWrap.appendChild(b);
+  });
+
+  function updateProps() {
+    const props = document.getElementById('props');
+    // hide the panel during active drawing / rubber-band / connecting
+    if (action === 'placing' || action === 'rubberband' || action === 'connecting' || action === 'resizing') {
+      props.hidden = true; return;
+    }
+    // show the panel only for selected colorable elements or a connection
+    const ids = [...selection];
+    const colorable = ids.map(elById).filter(e => e && e.type !== 'text');
+    const showColor = colorable.length > 0;
+    const show = showColor || !!selectedConn;
+    props.hidden = !show;
+    if (!show) return;
+
+    // position the panel above the selection
+    let minX = Infinity, minY = Infinity, maxX = -Infinity;
+    const targets = selectedConn ? [] : colorable;
+    swatchWrap.style.display = showColor ? 'flex' : 'none';
+    document.querySelector('#props .vsep').style.display = showColor ? '' : 'none';
+    const pw = props.offsetWidth || 220;
+    if (targets.length) {
+      for (const e of targets) {
+        minX = Math.min(minX, e.x); minY = Math.min(minY, e.y); maxX = Math.max(maxX, e.x + e.w);
+      }
+      const cx = ((minX + maxX) / 2) * camera.zoom + camera.x;
+      const top = minY * camera.zoom + camera.y;
+      props.style.left = Math.max(8, Math.min(window.innerWidth - pw - 8, cx - pw / 2)) + 'px';
+      props.style.top = Math.max(70, top - 56) + 'px';
+    } else {
+      props.style.left = Math.max(8, (window.innerWidth - pw) / 2) + 'px';
+      props.style.top = '70px';
+    }
+
+    // mark the current color (when uniform)
+    const colorSet = new Set(colorable.map(e => (e.color || '').toLowerCase()));
+    document.querySelectorAll('#props .swatch').forEach(s => {
+      s.classList.toggle('sel', colorSet.size === 1 && colorSet.has(s.dataset.fill.toLowerCase()));
+    });
+  }
+
+  function updateZoomLabel() {
+    document.getElementById('zoomLabel').textContent = Math.round(camera.zoom * 100) + '%';
+  }
+
+  // buttons
+  document.getElementById('btnUndo').onclick = undo;
+  document.getElementById('btnRedo').onclick = redo;
+  document.getElementById('btnPng').onclick = exportPNG;
+  document.getElementById('btnExport').onclick = exportJSON;
+  document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
+  document.getElementById('importFile').onchange = (ev) => {
+    const f = ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    if ((elements.length || connections.length) &&
+        !confirm('Importing will replace the current board. Continue?')) return;
+    importJSON(f);
+  };
+  document.getElementById('btnClear').onclick = () => {
+    if (elements.length === 0 && connections.length === 0) return;
+    if (confirm('Clear the entire board? You can\'t undo this with a button.')) {
+      elements = []; connections = []; selection = new Set(); selectedConn = null;
+      commit();
+    }
+  };
+  document.getElementById('btnDelete').onclick = deleteSelected;
+  document.getElementById('btnZoomIn').onclick = () => zoomButton(1.2);
+  document.getElementById('btnZoomOut').onclick = () => zoomButton(1 / 1.2);
+  document.getElementById('btnFit').onclick = fitToContent;
+  document.getElementById('zoomLabel').onclick = fitToContent;
+
+  const helpBtn = document.getElementById('helpBtn');
+  const helpPanel = document.getElementById('helpPanel');
+  helpBtn.onclick = () => {
+    helpPanel.hidden = !helpPanel.hidden;
+    helpBtn.setAttribute('aria-expanded', helpPanel.hidden ? 'false' : 'true');
+    if (!helpPanel.hidden) helpPanel.focus();
+  };
+  document.addEventListener('pointerdown', (ev) => {
+    if (!helpPanel.hidden && !helpPanel.contains(ev.target) && ev.target !== helpBtn) {
+      helpPanel.hidden = true; helpBtn.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('beforeunload', saveNow);
+  // redraw once fonts are ready so canvas text stays consistent
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+
+  // ============================================================
+  //  START
+  // ============================================================
+  loadSaved();
+  history = [snapshot()]; histIndex = 0;
+  setTool('select');
+  updateUndoButtons();
+  updateZoomLabel();
+  setSaved(true);
+  resize();
+
+  // hint shown on an empty board
+  if (elements.length === 0) {
+    const hint = makeElement('note', -125, -190);
+    hint.color = '#DDD6FE';
+    hint.w = 280; hint.h = 200;
+    hint.text = 'Welcome! 👋\n\nDouble-click empty space = a new note.\n\nLeft toolbar = shapes & arrows.';
+    elements.push(hint);
+    fitToContent();
+    history = [snapshot()]; histIndex = 0; updateUndoButtons();
+  }
+})();
+</script>
+</body>
+</html>

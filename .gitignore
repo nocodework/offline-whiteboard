@@ -1,0 +1,8 @@
+# macOS
+.DS_Store
+# editors
+.vscode/
+.idea/
+*.swp
+# scratch
+*.tmp
