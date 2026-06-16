@@ -127,6 +127,7 @@
   .brand .logo svg { width: 18px; height: 18px; }
   .brand .name { font-weight: 600; letter-spacing: -0.01em; font-size: 15px; line-height: 1; }
   .brand .sub { color: var(--muted-foreground); font-size: 11px; line-height: 1; margin-top: 3px; }
+  .brand .sub .by { color: var(--primary); font-weight: 600; }
   .actions { display: flex; align-items: center; gap: 6px; padding: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .actions .sep { width: 1px; height: 22px; background: var(--border); margin: 0 2px; }
   .saved-dot {
@@ -246,13 +247,13 @@
 
   <!-- Top bar -->
   <div class="topbar">
-    <a class="brand panel" href="https://nocodework.io" target="_blank" rel="noopener" title="Built by NoCodeWork — automation &amp; AI apps">
+    <a class="brand panel" href="https://nocodework.io" target="_blank" rel="noopener" title="Built by NoCodeWork, automation and AI apps">
       <div class="logo" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8.5 6.5 14.5M12 8.5 17.5 14.5" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><rect x="8" y="2.5" width="8" height="6" rx="1.6" fill="#FDE047"/><rect x="2.5" y="14.5" width="8" height="6" rx="1.6" fill="#fff"/><rect x="13.5" y="14.5" width="8" height="6" rx="1.6" fill="#fff"/></svg>
       </div>
       <div>
         <div class="name">Whiteboard</div>
-        <div class="sub">private · offline · by NoCodeWork ↗</div>
+        <div class="sub">private · offline · <span class="by">by NoCodeWork ↗</span></div>
       </div>
     </a>
     <div class="actions panel">
@@ -316,7 +317,7 @@
       <dt><kbd>⌘D</kbd></dt><dd>Duplicate</dd>
       <dt>wheel</dt><dd>Pan · <kbd>⌘</kbd>+wheel = zoom</dd>
     </dl>
-    <div class="foot">Saved automatically in this browser, and it works fully offline. Tip: use Export now and then to keep a backup you own.<br><br>Built by <a href="https://nocodework.io" target="_blank" rel="noopener">NoCodeWork</a>, automation &amp; AI apps.</div>
+    <div class="foot">Saved automatically in this browser, and it works fully offline. Tip: use Export now and then to keep a backup you own.<br><br>Built by <a href="https://nocodework.io" target="_blank" rel="noopener">NoCodeWork</a>, automation and AI apps.</div>
   </div>
 
   <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
