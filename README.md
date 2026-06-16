@@ -95,8 +95,10 @@ offline-whiteboard is one of a small family of single-file, offline-first tools 
 
 - **offline-whiteboard** — you're here
 - [**offline-notes**](https://github.com/nocodework/offline-notes) — a Markdown editor that renders as you type ([demo](https://nocodework.github.io/offline-notes/))
+- [**offline-sketch**](https://github.com/nocodework/offline-sketch) — a pressure-sensitive sketchpad ([demo](https://nocodework.github.io/offline-sketch/))
 
-[![offline-notes](https://raw.githubusercontent.com/nocodework/offline-notes/main/screenshot.png)](https://nocodework.github.io/offline-notes/)
+<a href="https://nocodework.github.io/offline-notes/"><img width="49%" src="https://raw.githubusercontent.com/nocodework/offline-notes/main/screenshot.png" alt="offline-notes"></a>
+<a href="https://nocodework.github.io/offline-sketch/"><img width="49%" src="https://raw.githubusercontent.com/nocodework/offline-sketch/main/screenshot.png" alt="offline-sketch"></a>
 
 ## Contributing
 
