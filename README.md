@@ -38,6 +38,13 @@ One thing worth knowing up front: because your boards live in the browser, they'
 
 The fastest way is to open the [live demo](https://nocodework.github.io/offline-whiteboard/) and go. If you want it offline, download `index.html` and double-click it. It's a static file, so you can also keep it on a USB stick, drop it on any web host, or `git clone` and open it. No server, no build step.
 
+Grab the file from a terminal (this also works inside Claude Code or Codex):
+
+```bash
+curl -O https://raw.githubusercontent.com/nocodework/offline-whiteboard/main/index.html
+open index.html      # macOS  ·  Linux: xdg-open index.html  ·  Windows: start index.html
+```
+
 ## Keyboard shortcuts
 
 | Key | Action | Key | Action |
@@ -81,6 +88,13 @@ Plain JavaScript, no libraries. The board draws to a single `<canvas>`, and a `<
 | Real-time collaboration | no | yes | yes |
 
 It's deliberately small: a whiteboard you fully own and can carry around in one file. If you need live multiplayer, Excalidraw or Miro will serve you better.
+
+## Part of the offline series
+
+offline-whiteboard is one of a small family of single-file, offline-first tools by NoCodeWork. Same idea every time: one HTML file, no account, no server, works offline.
+
+- **offline-whiteboard** — you're here
+- [**offline-notes**](https://github.com/nocodework/offline-notes) — a Markdown editor that renders as you type ([demo](https://nocodework.github.io/offline-notes/))
 
 ## Contributing
 
