@@ -45,6 +45,17 @@ curl -O https://raw.githubusercontent.com/nocodework/offline-whiteboard/main/ind
 open index.html      # macOS  ·  Linux: xdg-open index.html  ·  Windows: start index.html
 ```
 
+## Use it with Claude Code
+
+This repo ships a small [Claude Code](https://claude.com/claude-code) skill, **doflow**, that turns a described process, funnel or flow into a board and opens it here ready to edit — handy for sketching logic the way you might on a workshop whiteboard.
+
+```bash
+git clone https://github.com/nocodework/offline-whiteboard
+cp -r offline-whiteboard/claude-skill/doflow ~/.claude/skills/
+```
+
+Then in Claude Code, say *"draw a sales funnel"* or *"map this onboarding process on a whiteboard"*. It builds a board and opens the whiteboard with it preloaded (`#board64=`). Works offline against a local `index.html`. See [`claude-skill/doflow`](claude-skill/doflow/SKILL.md).
+
 ## Keyboard shortcuts
 
 | Key | Action | Key | Action |

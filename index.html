@@ -1351,6 +1351,24 @@
     } catch (e) { return false; }
   }
 
+  // Open a board passed in the URL hash — e.g. a process/funnel from Claude Code:
+  //   index.html#board64=<base64 UTF-8 JSON>   or   #board=<uri-encoded JSON>
+  function importFromHash() {
+    const m = location.hash.match(/^#board(64)?=([\s\S]+)$/);
+    if (!m) return false;
+    try {
+      const json = m[1] ? decodeURIComponent(escape(atob(m[2]))) : decodeURIComponent(m[2]);
+      const d = JSON.parse(json);
+      const els = sanitizeEls(d.elements);
+      if (!els.length) return false;
+      elements = els;
+      connections = sanitizeConns(d.connections, elements);
+      selection = new Set(); selectedConn = null;
+      window.history.replaceState(null, '', location.pathname + location.search);
+      return true;
+    } catch (e) { return false; }
+  }
+
   // ============================================================
   //  IMPORT / EXPORT
   // ============================================================
@@ -1547,15 +1565,18 @@
   //  START
   // ============================================================
   loadSaved();
+  const openedFromHash = importFromHash();
+  if (openedFromHash) saveNow();
   history = [snapshot()]; histIndex = 0;
   setTool('select');
   updateUndoButtons();
   updateZoomLabel();
   setSaved(true);
   resize();
+  if (openedFromHash) fitToContent();
 
   // hint shown on an empty board
-  if (elements.length === 0) {
+  if (!openedFromHash && elements.length === 0) {
     const hint = makeElement('note', -125, -190);
     hint.color = '#DDD6FE';
     hint.w = 280; hint.h = 200;
