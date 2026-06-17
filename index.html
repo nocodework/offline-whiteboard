@@ -179,6 +179,8 @@
   .props .swatch:hover { transform: scale(1.12); }
   .props .swatch.sel { box-shadow: 0 0 0 2px var(--primary); }
   .props .vsep { width: 1px; height: 24px; background: var(--border); }
+  .props .fontgrp { display: flex; gap: 4px; }
+  .props .fontgrp .btn { font-weight: 600; font-size: 13px; }
 
   /* ===== Zoom (bottom-right) ===== */
   .zoombar {
@@ -289,7 +291,12 @@
   <!-- Properties popover -->
   <div class="props panel" id="props" hidden>
     <div class="swatches" id="swatches"></div>
-    <div class="vsep"></div>
+    <div class="vsep" id="vsepColor"></div>
+    <div class="fontgrp" id="fontGrp">
+      <button class="btn icon" id="btnFontDn" title="Smaller text" aria-label="Smaller text">A−</button>
+      <button class="btn icon" id="btnFontUp" title="Larger text" aria-label="Larger text">A+</button>
+    </div>
+    <div class="vsep" id="vsepDel"></div>
     <button class="btn danger icon" id="btnDelete" title="Delete (Del)" aria-label="Delete selection"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
   </div>
 
@@ -315,6 +322,8 @@
       <dt><kbd>⌫</kbd></dt><dd>Delete selection</dd>
       <dt><kbd>⌘Z</kbd></dt><dd>Undo / <kbd>⌘⇧Z</kbd> redo</dd>
       <dt><kbd>⌘D</kbd></dt><dd>Duplicate</dd>
+      <dt><kbd>⌘C</kbd> <kbd>⌘V</kbd></dt><dd>Copy / paste · <kbd>⌘X</kbd> cut</dd>
+      <dt><kbd>A−</kbd> <kbd>A+</kbd></dt><dd>Text size (in the popover)</dd>
       <dt>wheel</dt><dd>Pan · <kbd>⌘</kbd>+wheel = zoom</dd>
     </dl>
     <div class="foot">Saved automatically in this browser, and it works fully offline. Tip: use Export now and then to keep a backup you own.<br><br>Built by <a href="https://nocodework.io" target="_blank" rel="noopener">NoCodeWork</a>, automation and AI apps.<br>Sibling tools: <a href="https://nocodework.github.io/offline-notes/" target="_blank" rel="noopener">offline-notes</a>, <a href="https://nocodework.github.io/offline-sketch/" target="_blank" rel="noopener">offline-sketch</a>.</div>
@@ -446,12 +455,12 @@
   // ---------- Text measuring / wrapping ----------
   const measureCtx = document.createElement('canvas').getContext('2d');
   function fontFor(e) {
-    const size = e.type === 'text' ? (e.fontSize || 24) : 16;
+    const size = e.fontSize || (e.type === 'text' ? 24 : 16);
     const weight = e.type === 'note' ? 500 : 400;
     return `${weight} ${size}px Inter, ui-sans-serif, system-ui, sans-serif`;
   }
   function lineHeightFor(e) {
-    const size = e.type === 'text' ? (e.fontSize || 24) : 16;
+    const size = e.fontSize || (e.type === 'text' ? 24 : 16);
     return Math.round(size * 1.3);
   }
   // Wraps text to maxWidth (honoring existing \n). Returns an array of lines.
@@ -744,6 +753,7 @@
     commit();
   }
 
+  let clipboard = null;
   function duplicateSelected() {
     if (selection.size === 0) return;
     const map = {};
@@ -765,6 +775,39 @@
     selection = new Set(clones.map(c => c.id));
     selectedConn = null;
     commit();
+  }
+  function copySelection() {
+    if (selection.size === 0) return;
+    const els = elements.filter(e => selection.has(e.id)).map(e => { const n = JSON.parse(JSON.stringify(e)); delete n._editing; return n; });
+    const idset = new Set(els.map(e => e.id));
+    const cons = connections.filter(c => idset.has(c.from) && idset.has(c.to)).map(c => ({ from: c.from, to: c.to }));
+    clipboard = { elements: els, connections: cons };
+  }
+  function pasteClipboard() {
+    if (!clipboard || !clipboard.elements.length) return;
+    const map = {}, clones = [];
+    for (const e of clipboard.elements) {
+      const n = JSON.parse(JSON.stringify(e));
+      n.id = uid(e.type); n.x += 28; n.y += 28; delete n._editing;
+      map[e.id] = n.id; clones.push(n);
+    }
+    elements.push(...clones);
+    for (const c of clipboard.connections) {
+      if (map[c.from] && map[c.to]) connections.push({ id: uid('c'), from: map[c.from], to: map[c.to] });
+    }
+    clipboard.elements.forEach(e => { e.x += 28; e.y += 28; }); // cascade repeated pastes
+    selection = new Set(clones.map(c => c.id)); selectedConn = null;
+    commit();
+  }
+  function setFontSize(delta) {
+    let changed = false;
+    for (const id of selection) {
+      const e = elById(id); if (!e) continue;
+      const cur = e.fontSize || (e.type === 'text' ? 24 : 16);
+      const nv = Math.max(8, Math.min(96, cur + delta));
+      if (nv !== cur) { e.fontSize = nv; if (e.type === 'text') remeasureText(e); changed = true; }
+    }
+    if (changed) commit();
   }
 
   function setColor(fill) {
@@ -802,7 +845,7 @@
     const z = camera.zoom;
     const sx = e.x * z + camera.x;
     const sy = e.y * z + camera.y;
-    const size = (e.type === 'text' ? (e.fontSize || 24) : 16) * z;
+    const size = (e.fontSize || (e.type === 'text' ? 24 : 16)) * z;
     editor.style.left = sx + 'px';
     editor.style.top = sy + 'px';
     editor.style.font = (e.type === 'note' ? '500 ' : '400 ') + size + 'px Inter, ui-sans-serif, system-ui, sans-serif';
@@ -1216,6 +1259,9 @@
       updateProps(); draw(); return;
     }
     if (meta && ev.key.toLowerCase() === 'd') { ev.preventDefault(); duplicateSelected(); return; }
+    if (meta && ev.key.toLowerCase() === 'c') { if (selection.size) { ev.preventDefault(); copySelection(); } return; }
+    if (meta && ev.key.toLowerCase() === 'x') { if (selection.size) { ev.preventDefault(); copySelection(); deleteSelected(); } return; }
+    if (meta && ev.key.toLowerCase() === 'v') { if (clipboard) { ev.preventDefault(); pasteClipboard(); } return; }
 
     if (ev.key === 'Delete' || ev.key === 'Backspace') {
       ev.preventDefault(); deleteSelected(); return;
@@ -1318,7 +1364,7 @@
           text: typeof e.text === 'string' ? e.text : '',
           color: typeof e.color === 'string' ? e.color : '#FFFFFF',
         };
-        if (e.type === 'text') o.fontSize = Number.isFinite(+e.fontSize) ? +e.fontSize : 24;
+        if (Number.isFinite(+e.fontSize)) o.fontSize = Math.max(8, Math.min(96, +e.fontSize)); else if (e.type === 'text') o.fontSize = 24;
         return o;
       });
   }
@@ -1480,17 +1526,21 @@
     }
     // show the panel only for selected colorable elements or a connection
     const ids = [...selection];
-    const colorable = ids.map(elById).filter(e => e && e.type !== 'text');
+    const editable = ids.map(elById).filter(Boolean);
+    const colorable = editable.filter(e => e.type !== 'text');
     const showColor = colorable.length > 0;
-    const show = showColor || !!selectedConn;
+    const showFont = editable.length > 0;
+    const show = showFont || !!selectedConn;
     props.hidden = !show;
     if (!show) return;
 
     // position the panel above the selection
     let minX = Infinity, minY = Infinity, maxX = -Infinity;
-    const targets = selectedConn ? [] : colorable;
+    const targets = selectedConn ? [] : editable;
     swatchWrap.style.display = showColor ? 'flex' : 'none';
-    document.querySelector('#props .vsep').style.display = showColor ? '' : 'none';
+    document.getElementById('vsepColor').style.display = showColor ? '' : 'none';
+    document.getElementById('fontGrp').style.display = showFont ? 'flex' : 'none';
+    document.getElementById('vsepDel').style.display = (showColor || showFont) ? '' : 'none';
     const pw = props.offsetWidth || 220;
     if (targets.length) {
       for (const e of targets) {
@@ -1538,6 +1588,8 @@
     }
   };
   document.getElementById('btnDelete').onclick = deleteSelected;
+  document.getElementById('btnFontUp').onclick = () => setFontSize(2);
+  document.getElementById('btnFontDn').onclick = () => setFontSize(-2);
   document.getElementById('btnZoomIn').onclick = () => zoomButton(1.2);
   document.getElementById('btnZoomOut').onclick = () => zoomButton(1 / 1.2);
   document.getElementById('btnFit').onclick = fitToContent;
